@@ -9,6 +9,13 @@ import select
 import socket
 import time
 
+# See if we have SSL support
+try:
+    import ssl
+    SSL = True
+except ImportError:
+    SSL = False
+
 from pika.adapters.base_connection import BaseConnection
 
 
@@ -30,6 +37,15 @@ class AsyncoreDispatcher(asyncore.dispatcher):
         # Create the socket, turn off nageling and connect
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+
+        # Wrap the SSL socket if we SSL turned on
+        if self.parameters.ssl:
+            if self.parameters.ssl_options:
+                self.socket = ssl.wrap_socket(self.socket,
+                                              **self.parameters.ssl_options)
+            else:
+                self.socket = ssl.wrap_socket(self.socket)
+
         self.connect((host, port))
 
         # Setup defaults

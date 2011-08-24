@@ -23,6 +23,13 @@ import errno
 import socket
 import time
 
+# See if we have SSL support
+try:
+    import ssl
+    SSL = True
+except ImportError:
+    SSL = False
+
 from pika.connection import Connection
 import pika.log
 
@@ -34,12 +41,20 @@ ERROR = 0x0008
 
 class BaseConnection(Connection):
 
-    def __init__(self, parameters=None, on_open_callback=None,
+    def __init__(self, parameters=None,
+                  on_open_callback=None,
                  reconnection_strategy=None):
+
+        # Let the developer know we could not import SSL
+        if parameters.ssl and not SSL:
+            raise Exception("SSL specified but it is not available")
+
         # Set our defaults
         self.fd = None
         self.ioloop = None
         self.socket = None
+        self._ssl_connecting = False
+        self._ssl_handshake = False
 
         # Event states (base and current)
         self.base_events = READ | ERROR
@@ -55,6 +70,27 @@ class BaseConnection(Connection):
         """
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         self.socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+        # Wrap the SSL socket if we SSL turned on
+        ssl_text = ""
+        if self.parameters.ssl:
+            ssl_text = " with SSL"
+            if self.parameters.ssl_options:
+                # Always overwrite this value
+                self.parameters.ssl_options['do_handshake_on_connect'] = \
+                    self._ssl_handshake
+                self.socket = ssl.wrap_socket(self.socket,
+                                              **self.parameters.ssl_options)
+            else:
+                self.socket = ssl.wrap_socket(self.socket,
+                                              do_handshake_on_connect=\
+                                                  self._ssl_handshake)
+
+            # Flags for SSL handshake negotiation
+            self._ssl_connecting = True
+
+        # Try and connect
+        pika.log.info("Connecting to %s:%i%s", host, port, ssl_text)
+
         self.socket.connect((host, port))
         self.socket.setblocking(0)
 
@@ -111,6 +147,8 @@ class BaseConnection(Connection):
         # Socket is closed, so lets just go to our handle_close method
         elif error_code == errno.EBADF:
             pika.log.error("%s: Socket is closed", self.__class__.__name__)
+        elif self.parameters.ssl and isinstance(error, ssl.SSLError):
+            pika.log.error(repr(error))
         else:
             # Haven't run into this one yet, log it.
             pika.log.error("%s: Socket Error on %d: %s",
@@ -120,6 +158,27 @@ class BaseConnection(Connection):
 
         # Disconnect from our IOLoop and let Connection know what's up
         self._handle_disconnect()
+
+    def _do_ssl_handshake(self):
+        """
+        Copied from python stdlib test_ssl.py
+
+        """
+        pika.log.debug("_do_ssl_handshake")
+        try:
+            self.socket.do_handshake()
+        except ssl.SSLError, err:
+            if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
+                               ssl.SSL_ERROR_WANT_WRITE):
+                return
+            elif err.args[0] == ssl.SSL_ERROR_EOF:
+                return self.handle_close()
+            raise
+        except socket.error, err:
+            if err.args[0] == errno.ECONNABORTED:
+                return self.handle_close()
+        else:
+            self._ssl_connecting = False
 
     def _handle_events(self, fd, events, error=None):
         """
@@ -147,8 +206,13 @@ class BaseConnection(Connection):
         """
         Read from the socket and call our on_data_available with the data
         """
+        if self.parameters.ssl and self._ssl_connecting:
+            return self._do_ssl_handshake()
         try:
-            data = self.socket.recv(self._suggested_buffer_size)
+            if self.parameters.ssl and self.socket.pending():
+                data = self.socket.read()
+            else:
+                data = self.socket.recv(self._suggested_buffer_size)
         except socket.timeout:
             raise
         except socket.error, error:
@@ -166,6 +230,9 @@ class BaseConnection(Connection):
         We only get here when we have data to write, so try and send
         Pika's suggested buffer size of data (be nice to Windows)
         """
+        if self.parameters.ssl and self._ssl_connecting:
+            return self._do_ssl_handshake()
+
         data = self.outbound_buffer.read(self._suggested_buffer_size)
         try:
             bytes_written = self.socket.send(data)

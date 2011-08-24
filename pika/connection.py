@@ -45,7 +45,9 @@ class ConnectionParameters(object):
                  credentials=None,
                  channel_max=0,
                  frame_max=spec.FRAME_MAX_SIZE,
-                 heartbeat=False):
+                 heartbeat=False,
+                 ssl=False,
+                 ssl_options=None):
 
         # Validate the host type
         if not isinstance(host, str):
@@ -106,6 +108,14 @@ class ConnectionParameters(object):
         if not isinstance(heartbeat, bool):
             raise TypeError("heartbeat must be a bool")
 
+        # Validate the connection retry boolean
+        if not isinstance(ssl, bool):
+            raise TypeError("ssl must be a bool")
+
+        # Validate the connection retry boolean
+        if not isinstance(ssl_options, dict) and ssl_options is not None:
+            raise TypeError("ssl_options must be either None or dict")
+
         # Assign our values
         self.host = host
         self.port = port
@@ -114,6 +124,8 @@ class ConnectionParameters(object):
         self.channel_max = channel_max
         self.frame_max = frame_max
         self.heartbeat = int(heartbeat)
+        self.ssl = ssl
+        self.ssl_options = ssl_options
 
 
 class Connection(object):
