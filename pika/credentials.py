@@ -55,6 +55,20 @@ class PlainCredentials(object):
             self.username = None
             self.password = None
 
+class ExternalCredentials(PlainCredentials):
+    TYPE = 'EXTERNAL'
+
+    def __init__(self):
+        self.erase_on_connect = False
+
+    def response_for(self, start):
+
+        if ExternalCredentials.TYPE not in start.mechanisms.split():
+            return None, None
+        return ExternalCredentials.TYPE, ""
+
+    def erase_credentials(self):
+        pass
 
 # Append custom credential types to this list for validation support
-VALID_TYPES = [PlainCredentials]
+VALID_TYPES = [PlainCredentials, ExternalCredentials]
