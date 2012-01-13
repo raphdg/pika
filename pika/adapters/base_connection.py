@@ -147,8 +147,19 @@ class BaseConnection(Connection):
         # Socket is closed, so lets just go to our handle_close method
         elif error_code == errno.EBADF:
             pika.log.error("%s: Socket is closed", self.__class__.__name__)
+            self._handle_disconnect()
+            return None
+
         elif self.parameters.ssl and isinstance(error, ssl.SSLError):
             pika.log.error(repr(error))
+            if error_code in (ssl.SSL_ERROR_WANT_READ,
+                              ssl.SSL_ERROR_WANT_WRITE):
+                return None
+            else:
+                pika.log.error("%s: SSL Socket error on fd %d: %s",
+                        self.__class__.__name__,
+                        self.socket.fileno(),
+                        repr(error))
         else:
             # Haven't run into this one yet, log it.
             pika.log.error("%s: Socket Error on %d: %s",
@@ -210,7 +221,10 @@ class BaseConnection(Connection):
             return self._do_ssl_handshake()
         try:
             if self.parameters.ssl and self.socket.pending():
-                data = self.socket.read()
+                data = self.socket.read(self._suggested_buffer_size)
+                
+                while len(data) == 0:
+                    data = self.socket.read(self._suggested_buffer_size)
             else:
                 data = self.socket.recv(self._suggested_buffer_size)
         except socket.timeout:
@@ -235,7 +249,12 @@ class BaseConnection(Connection):
 
         data = self.outbound_buffer.read(self._suggested_buffer_size)
         try:
-            bytes_written = self.socket.send(data)
+            if self.parameters.ssl:
+                bytes_written = 0
+                while bytes_written == 0:
+                    bytes_written = self.socket.send(data)
+            else:
+                bytes_written = self.socket.send(data)
         except socket.timeout:
             raise
         except socket.error, error:
