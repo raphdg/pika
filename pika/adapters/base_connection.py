@@ -210,7 +210,10 @@ class BaseConnection(Connection):
             return self._do_ssl_handshake()
         try:
             if self.parameters.ssl and self.socket.pending():
-                data = self.socket.read()
+                data = self.socket.read(self._suggested_buffer_size)
+                
+                while len(data) == 0:
+                    data = self.socket.read(self._suggested_buffer_size)
             else:
                 data = self.socket.recv(self._suggested_buffer_size)
         except socket.timeout:
@@ -235,7 +238,12 @@ class BaseConnection(Connection):
 
         data = self.outbound_buffer.read(self._suggested_buffer_size)
         try:
-            bytes_written = self.socket.send(data)
+            if self.parameters.ssl:
+                bytes_written = 0
+                while bytes_written == 0:
+                    bytes_written = self.socket.send(data)
+            else:
+                bytes_written = self.socket.send(data)
         except socket.timeout:
             raise
         except socket.error, error:
