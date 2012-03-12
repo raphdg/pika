@@ -22,7 +22,7 @@ library. Pika was developed primarily for use with RabbitMQ, but
 should also work with other AMQP 0-9-1 brokers.
 """
 
-setup(name='pika',
+setup(name='python-pika-ssl',
       version='0.9.5',
       description='Pika Python AMQP Client Library',
       long_description=long_description,
