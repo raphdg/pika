@@ -1,6 +1,8 @@
 """Core connection objects"""
 import logging
 import platform
+import urlparse
+import urllib
 
 from pika import __version__
 from pika import callback
@@ -28,6 +30,7 @@ class ConnectionParameters(object):
     DEFAULT_LOCALE = 'en_US'
     DEFAULT_SOCKET_TIMEOUT = 0.25
     def __init__(self,
+                 uri=None,
                  host='localhost',
                  port=spec.PORT,
                  virtual_host='/',
@@ -43,6 +46,14 @@ class ConnectionParameters(object):
                  locale=DEFAULT_LOCALE):
         """Create a new ConnectionParameters instance.
 
+        :param str uri: AMQP URI (i.e. amqps://user:pass@host:10000/vhost).
+            This uri provides a way to override 6 parameters with a single
+            connection string: ssl, username, password, hostname, port and
+            virtual_host. Ssl, hostname, port and virtual_host parameters will,
+            if specified, override instance parameters. If username AND
+            password are provided, the credentials parameter will be overridden.
+            Full spec: http://www.rabbitmq.com/uri-spec.html
+                Defaults to None
         :param str host: Hostname or IP Address to connect to.
             Defaults to localhost.
         :param int port: TCP port to connect to.
@@ -75,6 +86,19 @@ class ConnectionParameters(object):
         :raises: TypeError
 
         """
+        if uri:
+            _parsed = self._parse_uri(uri)
+            if _parsed['hostname']:
+                host = _parsed['hostname']
+            if _parsed['port']:
+                port = _parsed['port']
+            if _parsed['credentials']:
+                credentials = _parsed['credentials']
+            if _parsed['virtual_host']:
+                virtual_host = _parsed['virtual_host']
+            if _parsed['ssl']:
+                ssl = _parsed['ssl']
+
         if not isinstance(host, str):
             raise TypeError("Host must be a str")
         if not isinstance(port, int):
@@ -136,6 +160,32 @@ class ConnectionParameters(object):
                 return
         raise TypeError('Credentials must be an object of type: %r' %
                         pika_credentials.VALID_TYPES)
+
+    def _parse_uri(self, uri):
+        """Parse the AMQP URI according to this spec: 
+        http://www.rabbitmq.com/uri-spec.html
+
+        :param str uri: AMQP URI to parse.
+        :raises: TypeError
+
+        """
+        if not isinstance(uri, str):
+            raise TypeError('Amqp URI must be a str')
+
+        unquoted_uri = urllib.unquote(uri)
+        parsed = urlparse.urlparse(unquoted_uri)
+        if parsed.scheme != 'amqp' and parsed.scheme != 'amqps':
+            raise ValueError("uri scheme must be either 'amqp' or 'amqps'")
+
+        creds = None
+        if parsed.username and parsed.password:
+            creds = pika_credentials.PlainCredentials(parsed.username,
+                                                      parsed.password)
+        return {'credentials': creds, 
+                'port': parsed.port,
+                'ssl': parsed.scheme.lower().endswith('s'),
+                'hostname': parsed.hostname if parsed.hostname else None,
+                'virtual_host': parsed.path[1:] if parsed.path else None}
 
 
 class Connection(object):
