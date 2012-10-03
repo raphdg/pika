@@ -49,10 +49,11 @@ class ConnectionParameters(object):
         :param str uri: AMQP URI (i.e. amqps://user:pass@host:10000/vhost).
             This uri provides a way to override 6 parameters with a single
             connection string: ssl, username, password, hostname, port and
-            virtual_host. Ssl, hostname, port and virtual_host parameters will,
-            if specified, override instance parameters. If username AND
-            password are provided, the credentials parameter will be overridden.
-            Full spec: http://www.rabbitmq.com/uri-spec.html
+            virtual_host. 
+            Ssl, hostname, port and virtual_host parameters will, if specified,
+            override instance parameters. If username AND password are
+            provided, the credentials parameter will be overridden.
+            Full spec here: http://www.rabbitmq.com/uri-spec.html
                 Defaults to None
         :param str host: Hostname or IP Address to connect to.
             Defaults to localhost.
