@@ -1,6 +1,6 @@
 #!/bin/bash
 
-platforms=(epel-6-i386 fedora-16-i386)
+platforms=(fedora-18-i386)
 
 python setup.py sdist
 mv dist/python-pika-ssl-0.9.5.tar.gz ~/rpmbuild/SOURCES/
